@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+.venv*/
+.env
+
+# Datos y modelos (se generan al usar el bot / la app)
+data/videos/*
+data/audios/*
+data/referencias/*
+data/separaciones/*
+data/clonados/*
+data/mezclas/*
+!data/**/.gitkeep
+checkpoints/
+seed-vc/
+*.wav
+*.mp3
+*.mp4
+
+# Streamlit secrets
+.streamlit/secrets.toml
+
+# Jupyter
+.ipynb_checkpoints/

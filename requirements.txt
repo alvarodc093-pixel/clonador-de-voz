@@ -1,0 +1,8 @@
+# App base: Streamlit + bot sin GPU (extraer audio con ffmpeg + mezclar + grabar).
+# Los modelos pesados van en requirements-voz.txt / requirements-canto.txt.
+streamlit>=1.39
+numpy
+soundfile
+yt-dlp
+pypdf
+python-dotenv

@@ -1,0 +1,6 @@
+# Clona tu voz con Chatterbox · paquetes del tutorial (Python 3.11)
+chatterbox-tts
+sounddevice
+matplotlib
+setuptools<81      # lo necesita la marca de agua de Chatterbox (usa pkg_resources)
+ipykernel
