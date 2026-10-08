@@ -65,6 +65,8 @@ with st.sidebar:
     if cfg.VIDEOS:
         st.caption(f"{len(cfg.VIDEOS)} video(s) en el `.env`.")
     st.markdown("Material original en `Archivos/` (cuadernos de la guía).")
+    import sys as _sys
+    st.caption(f"`{ _sys.executable }`")
 
 tab_extraer, tab_voz, tab_clonar, tab_cantar, tab_mezclar = st.tabs(
     ["1. Extraer audio", "2. Mi voz", "3. Clonar voz",
@@ -305,7 +307,7 @@ with tab_mezclar:
         if fuente_base == "Subir base musical" else None
     voz_sel = st.selectbox("Voz (de los pasos 3-4)", voz_opciones or ["(aun no hay)"])
     volumen = st.slider("Volumen de la voz", 0.3, 2.0, 1.0, 0.05)
-    if st.button("Mezclar", icon=":material/mixer:"):
+    if st.button("Mezclar", icon=":material/graphic_eq:"):
         if not voz_opciones:
             st.warning("Genera primero una voz en los pasos 3 o 4.")
             st.stop()
