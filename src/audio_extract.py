@@ -24,11 +24,39 @@ def guardar_fichas(fichas: list[dict]) -> Path:
     return FICHA_VIDEOS
 
 
+def _buscar_ffmpeg(nombre: str) -> str | None:
+    """Busca ffmpeg/ffprobe en PATH y, si falla, en ubicaciones típicas de Windows.
+
+    Necesario porque `winget install Gyan.FFmpeg` añade el PATH solo para
+    terminales nuevas: un Streamlit ya abierto no lo ve con shutil.which.
+    """
+    ruta = shutil.which(nombre)
+    if ruta:
+        return ruta
+    # Nombres en minúsculas: el glob de pathlib distingue mayúsculas incluso en Windows
+    exe = f"{nombre}.exe" if nombre in {"ffmpeg", "ffprobe"} else nombre
+    candidatos: list[Path] = []
+    # Paquete winget Gyan.FFmpeg (ruta versionada, p. ej. ffmpeg-9.0.2-full_build/bin)
+    base_winget = (Path.home() / "AppData" / "Local" / "Microsoft"
+                   / "WinGet" / "Packages")
+    if base_winget.exists():
+        candidatos += sorted(base_winget.glob(f"Gyan.FFmpeg*/ffmpeg-*/bin/{exe}"))
+        candidatos += sorted(base_winget.glob(f"Gyan.FFmpeg*/bin/{exe}"))
+    candidatos += [
+        Path(r"C:\Program Files\FFmpeg\bin") / exe,
+        Path(r"C:\ffmpeg\bin") / exe,
+    ]
+    for c in candidatos:
+        if c.exists():
+            return str(c)
+    return None
+
+
 def herramientas_ok() -> dict[str, str | None]:
     """Devuelve rutas de ffmpeg/ffprobe/yt-dlp o None si faltan."""
     estado = {
-        "ffmpeg": shutil.which("ffmpeg"),
-        "ffprobe": shutil.which("ffprobe"),
+        "ffmpeg": _buscar_ffmpeg("ffmpeg"),
+        "ffprobe": _buscar_ffmpeg("ffprobe"),
     }
     try:
         import yt_dlp  # noqa: F401
@@ -78,6 +106,11 @@ def descargar_video(url: str, altura_max: int = 480, destino: Path = DIR_VIDEOS,
         "outtmpl": str(destino / "%(id)s.%(ext)s"),
         "noplaylist": True, "quiet": True, "no_warnings": True, "noprogress": True,
     }
+    # yt-dlp lanza ffmpeg como subproceso: si el PATH del proceso es viejo
+    # (Streamlit abierto antes de instalar ffmpeg), hay que darle la ruta.
+    bin_ffmpeg = _buscar_ffmpeg("ffmpeg")
+    if bin_ffmpeg is not None:
+        opciones["ffmpeg_location"] = str(Path(bin_ffmpeg).parent)
     with yt_dlp.YoutubeDL(opciones) as ydl:
         ydl.download([url])
     existente = _existe_video(destino, ficha["id"])
@@ -89,7 +122,8 @@ def descargar_video(url: str, altura_max: int = 480, destino: Path = DIR_VIDEOS,
 def extraer_audio(ruta_video: str | Path, ruta_audio: str | Path | None = None,
                   frecuencia: int = FS_VOZ) -> Path:
     """Extrae la pista de sonido a WAV mono de `frecuencia` Hz."""
-    if shutil.which("ffmpeg") is None:
+    bin_ffmpeg = _buscar_ffmpeg("ffmpeg")
+    if bin_ffmpeg is None:
         raise RuntimeError(
             "Falta ffmpeg. Windows: `winget install ffmpeg` · "
             "macOS: `brew install ffmpeg` · Linux: `sudo apt install ffmpeg`.")
@@ -98,7 +132,7 @@ def extraer_audio(ruta_video: str | Path, ruta_audio: str | Path | None = None,
         DIR_AUDIOS.mkdir(parents=True, exist_ok=True)
         ruta_audio = DIR_AUDIOS / f"{ruta_video.stem}.wav"
     ruta_audio = Path(ruta_audio)
-    orden = ["ffmpeg", "-y", "-loglevel", "error", "-i", str(ruta_video),
+    orden = [bin_ffmpeg, "-y", "-loglevel", "error", "-i", str(ruta_video),
              "-vn", "-ac", "1", "-ar", str(frecuencia), "-c:a", "pcm_s16le", str(ruta_audio)]
     subprocess.run(orden, check=True)
     return ruta_audio
