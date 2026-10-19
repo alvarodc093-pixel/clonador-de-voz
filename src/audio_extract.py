@@ -14,12 +14,16 @@ from pathlib import Path
 
 from .config import DIR_AUDIOS, DIR_VIDEOS, FICHA_VIDEOS, FS_VOZ
 
+EXTENSIONES_MEDIA = {".mp4", ".m4v", ".mkv", ".webm", ".mov",
+                     ".mp3", ".m4a", ".aac", ".ogg", ".wav", ".flac"}
+
 
 def guardar_fichas(fichas: list[dict]) -> Path:
     """Escribe el índice data/videos.json que usan los pasos siguientes (guía 01 §5)."""
     import json
 
-    FICHA_VIDEOS.write_text(json.dumps(fichas, ensure_ascii=False, indent=2),
+    FICHA_VIDEOS.parent.mkdir(parents=True, exist_ok=True)
+    FICHA_VIDEOS.write_text(json.dumps(list(fichas), ensure_ascii=False, indent=2),
                             encoding="utf-8")
     return FICHA_VIDEOS
 
@@ -72,11 +76,17 @@ def ficha_youtube(url: str) -> dict:
     """Ficha del vídeo SIN descargarlo (título, canal, duración...)."""
     import yt_dlp
 
-    with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "noplaylist": True}) as ydl:
-        info = ydl.extract_info(url, download=False)
+    try:
+        with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True,
+                               "noplaylist": True}) as ydl:
+            info = ydl.extract_info(str(url), download=False)
+    except Exception as e:  # red, 403, vídeo privado, etc.
+        raise RuntimeError(f"No se pudo leer el vídeo {url}: {e}") from e
+    if not info or not info.get("id"):
+        raise RuntimeError(f"yt-dlp no devolvió datos del vídeo {url}.")
     return {
         "id": info.get("id"),
-        "titulo": info.get("title"),
+        "titulo": info.get("title") or info.get("id"),
         "canal": info.get("channel"),
         "duracion_s": info.get("duration"),
         "licencia": info.get("license") or "licencia estándar de YouTube",
@@ -86,7 +96,7 @@ def ficha_youtube(url: str) -> dict:
 
 def _existe_video(destino: Path, video_id: str) -> Path | None:
     candidatos = [p for p in destino.glob(f"{video_id}.*")
-                  if p.suffix not in {".part", ".ytdl", ".json"}]
+                  if p.suffix.lower() in EXTENSIONES_MEDIA and p.stat().st_size > 0]
     return candidatos[0] if candidatos else None
 
 
@@ -96,7 +106,12 @@ def descargar_video(url: str, altura_max: int = 480, destino: Path = DIR_VIDEOS,
     import yt_dlp
 
     destino.mkdir(parents=True, exist_ok=True)
+    altura_max = int(altura_max)
+    if altura_max <= 0:
+        raise ValueError("altura_max debe ser positiva.")
     ficha = ficha or ficha_youtube(url)  # una sola llamada de red en todo el flujo
+    if not ficha.get("id"):
+        raise RuntimeError("La ficha del vídeo no tiene id; no se puede descargar.")
     existente = _existe_video(destino, ficha["id"])
     if existente is not None:
         return existente
@@ -111,8 +126,11 @@ def descargar_video(url: str, altura_max: int = 480, destino: Path = DIR_VIDEOS,
     bin_ffmpeg = _buscar_ffmpeg("ffmpeg")
     if bin_ffmpeg is not None:
         opciones["ffmpeg_location"] = str(Path(bin_ffmpeg).parent)
-    with yt_dlp.YoutubeDL(opciones) as ydl:
-        ydl.download([url])
+    try:
+        with yt_dlp.YoutubeDL(opciones) as ydl:
+            ydl.download([url])
+    except Exception as e:
+        raise RuntimeError(f"Falló la descarga de {url}: {e}") from e
     existente = _existe_video(destino, ficha["id"])
     if existente is None:
         raise FileNotFoundError(f"No se encontró el vídeo descargado {ficha['id']}")
@@ -128,44 +146,87 @@ def extraer_audio(ruta_video: str | Path, ruta_audio: str | Path | None = None,
             "Falta ffmpeg. Windows: `winget install ffmpeg` · "
             "macOS: `brew install ffmpeg` · Linux: `sudo apt install ffmpeg`.")
     ruta_video = Path(ruta_video)
+    if not ruta_video.exists():
+        raise FileNotFoundError(f"No existe el archivo de entrada: {ruta_video}")
+    frecuencia = int(frecuencia)
+    if frecuencia <= 0:
+        raise ValueError("La frecuencia de salida debe ser positiva.")
     if ruta_audio is None:
         DIR_AUDIOS.mkdir(parents=True, exist_ok=True)
         ruta_audio = DIR_AUDIOS / f"{ruta_video.stem}.wav"
     ruta_audio = Path(ruta_audio)
+    ruta_audio.parent.mkdir(parents=True, exist_ok=True)
     orden = [bin_ffmpeg, "-y", "-loglevel", "error", "-i", str(ruta_video),
              "-vn", "-ac", "1", "-ar", str(frecuencia), "-c:a", "pcm_s16le", str(ruta_audio)]
-    subprocess.run(orden, check=True)
+    try:
+        subprocess.run(orden, check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as e:
+        detalle = (e.stderr or "").strip()[-500:] or "sin detalle de ffmpeg"
+        raise RuntimeError(f"ffmpeg no pudo extraer el audio: {detalle}") from e
+    except OSError as e:
+        raise RuntimeError(f"No se pudo ejecutar ffmpeg ({bin_ffmpeg}): {e}") from e
+    if not ruta_audio.exists() or ruta_audio.stat().st_size == 0:
+        raise RuntimeError("ffmpeg terminó sin generar el WAV esperado.")
     return ruta_audio
+
+
+def _normalizar_wav_sin_ffmpeg(origen: Path, destino: Path) -> Path:
+    """Fallback sin ffmpeg: soundfile + remuestreo/mono en Python."""
+    import numpy as np
+    import soundfile as sf
+
+    from .utils import guardar_wav, remuestrear
+
+    audio, sr = sf.read(str(origen), dtype="float32", always_2d=False)
+    audio = np.asarray(audio, dtype=np.float32)
+    if audio.ndim == 2:
+        audio = audio.mean(axis=1)
+    if int(sr) != FS_VOZ:
+        audio = remuestrear(audio, sr, FS_VOZ)
+    return guardar_wav(destino, audio, FS_VOZ)
 
 
 def incorporar_archivo_local(ruta: str | Path) -> dict:
     """Copia un archivo propio a data/videos y normaliza su wav a mono 16 kHz."""
     ruta = Path(ruta).expanduser()
     if not ruta.exists():
-        raise FileNotFoundError(ruta)
+        raise FileNotFoundError(f"No existe el archivo: {ruta}")
+    if ruta.suffix.lower() not in EXTENSIONES_MEDIA:
+        raise ValueError(
+            f"Formato no soportado: {ruta.suffix or '(sin extensión)'}. "
+            f"Usa: {', '.join(sorted(EXTENSIONES_MEDIA))}.")
     destino = DIR_VIDEOS / ruta.name
-    if not destino.exists() and destino.resolve() != ruta.resolve():
+    if destino.resolve() != ruta.resolve() and not destino.exists():
         shutil.copy(ruta, destino)
     wav = DIR_AUDIOS / f"{ruta.stem}.wav"
-    if not wav.exists():
-        try:
-            extraer_audio(destino, wav)  # normaliza: mono + 16 kHz
-        except RuntimeError:
-            if ruta.suffix.lower() != ".wav":
-                raise
-            shutil.copy(destino, wav)  # sin ffmpeg: solo vale si ya es wav
+    # Reextrae si el wav no existe o es más antiguo que el archivo de origen.
+    if wav.exists() and wav.stat().st_mtime >= ruta.stat().st_mtime:
+        return {"id": ruta.stem, "titulo": ruta.stem, "archivo_video": destino.name,
+                "archivo_audio": wav.name, "origen": str(ruta)}
+    try:
+        extraer_audio(destino, wav)  # normaliza: mono + 16 kHz
+    except RuntimeError:
+        if ruta.suffix.lower() != ".wav":
+            raise
+        # Sin ffmpeg: normalizamos el WAV con soundfile (mono 16 kHz).
+        _normalizar_wav_sin_ffmpeg(destino, wav)
     return {"id": ruta.stem, "titulo": ruta.stem, "archivo_video": destino.name,
             "archivo_audio": wav.name, "origen": str(ruta)}
 
 
 def procesar_origen(origen: str | Path, altura_max: int = 480) -> dict:
     """Un solo punto de entrada: URL de YouTube o ruta local -> dict con wav."""
-    if isinstance(origen, Path) or (isinstance(origen, str) and not origen.startswith("http")):
+    if isinstance(origen, Path):
         return incorporar_archivo_local(origen)
-    ficha = ficha_youtube(str(origen))  # una sola llamada de red
-    video = descargar_video(str(origen), altura_max=altura_max, ficha=ficha)
+    origen = str(origen).strip()
+    if not origen:
+        raise ValueError("El origen está vacío: pasa una URL o una ruta de archivo.")
+    if not origen.startswith(("http://", "https://")):
+        return incorporar_archivo_local(origen)
+    ficha = ficha_youtube(origen)  # una sola llamada de red
+    video = descargar_video(origen, altura_max=altura_max, ficha=ficha)
     # id = nombre sin extensión (yt-dlp usa %(id)s como nombre)
     wav = DIR_AUDIOS / f"{video.stem}.wav"
-    if not wav.exists():
+    if not wav.exists() or wav.stat().st_mtime < video.stat().st_mtime:
         extraer_audio(video, wav)
     return {**ficha, "archivo_video": video.name, "archivo_audio": wav.name}

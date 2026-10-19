@@ -3,6 +3,7 @@
 streamlit>=1.39
 numpy
 soundfile
+librosa          # leer mp3/m4a y remuestrear en los pasos 1, 2 y 5
 yt-dlp
 pypdf
 python-dotenv

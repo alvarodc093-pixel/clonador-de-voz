@@ -4,6 +4,11 @@ __pycache__/
 .venv*/
 .env
 
+# Herramientas de calidad
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
 # Datos y modelos (se generan al usar el bot / la app)
 data/videos/*
 data/audios/*

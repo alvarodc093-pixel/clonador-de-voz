@@ -16,10 +16,15 @@ Carga perezosa: importar este modulo NO carga el modelo.
 """
 from __future__ import annotations
 
+import math
+import sys
+import threading
 from pathlib import Path
 
 import numpy as np
 import soundfile as sf
+
+from .utils import remuestrear
 
 try:
     import torch
@@ -29,6 +34,36 @@ except ImportError:
 FS = 44_100
 
 _motor = None
+_cerrojo = threading.Lock()
+
+
+_MODULOS_CANTO = {
+    "torch": "torch",
+    "torchaudio": "torchaudio",
+    "munch": "munch",
+    "dac": "descript-audio-codec",
+    "einops": "einops",
+    "transformers": "transformers",
+    "scipy": "scipy",
+    "librosa": "librosa",
+    "pydub": "pydub",
+    "yaml": "pyyaml",
+}
+
+
+def dependencias_seedvc() -> list[str]:
+    """Lista de paquetes del entorno de canto que faltan (por su nombre pip)."""
+    import importlib.util
+
+    faltan: list[str] = []
+    for modulo, paquete in _MODULOS_CANTO.items():
+        try:
+            disponible = importlib.util.find_spec(modulo) is not None
+        except (ImportError, ValueError):
+            disponible = False
+        if not disponible:
+            faltan.append(paquete)
+    return faltan
 
 
 def seedvc_disponible() -> bool:
@@ -61,31 +96,84 @@ def cargar_motor(device: str | None = None):
     global _motor
     if _motor is not None:
         return _motor
-    import sys
-
-    from .config import ROOT
-
-    for candidato in (ROOT / "seed-vc", Path("seed-vc")):
-        if (candidato / "seed_vc_wrapper.py").exists():
-            sys.path.insert(0, str(candidato.resolve()))
-            break
-    else:
+    if torch is None:
         raise RuntimeError(
-            "No se encontro la carpeta seed-vc junto al proyecto. "
-            "Clonala con: git clone https://github.com/Plachtaa/seed-vc.git"
+            "Falta PyTorch en este entorno. Instala el entorno de canto: "
+            "pip install -r requirements-canto.txt (Python 3.10)."
         )
-    from seed_vc_wrapper import SeedVCWrapper
+    with _cerrojo:
+        if _motor is not None:
+            return _motor
+        from .config import ROOT
 
-    _motor = SeedVCWrapper(device=torch.device(device or dispositivo()))
-    # Fix Mac con chip Apple: el detector de tono devuelve float64.
-    try:
-        _detectar = _motor.rmvpe.infer_from_audio
-        _motor.rmvpe.infer_from_audio = (
-            lambda *a, **k: _detectar(*a, **k).astype("float32")
-        )
-    except Exception:
-        pass
-    return _motor
+        for candidato in (ROOT / "seed-vc", Path("seed-vc")):
+            if (candidato / "seed_vc_wrapper.py").exists():
+                ruta = str(candidato.resolve())
+                if ruta not in sys.path:
+                    sys.path.insert(0, ruta)
+                break
+        else:
+            raise RuntimeError(
+                "No se encontro la carpeta seed-vc junto al proyecto. "
+                "Clonala con: git clone https://github.com/Plachtaa/seed-vc.git"
+            )
+        try:
+            from seed_vc_wrapper import SeedVCWrapper
+        except Exception as e:
+            raise RuntimeError(
+                "No se pudo importar seed_vc_wrapper. Revisa que el entorno de "
+                f"canto esté instalado (requirements-canto.txt). Detalle: {e}"
+            ) from e
+        try:
+            _motor = SeedVCWrapper(device=torch.device(device or dispositivo()))
+        except Exception as e:
+            raise RuntimeError(
+                "No se pudo cargar el modelo de Seed-VC (¿sin conexión para "
+                f"descargar los pesos o sin memoria suficiente?). Detalle: {e}"
+            ) from e
+        # Fix Mac con chip Apple: el detector de tono devuelve float64.
+        try:
+            _detectar = _motor.rmvpe.infer_from_audio
+            _motor.rmvpe.infer_from_audio = (
+                lambda *a, **k: _detectar(*a, **k).astype("float32")
+            )
+        except Exception:
+            pass
+        return _motor
+
+
+def _extraer_audio(conversion) -> np.ndarray:
+    """Acepta el generador de Seed-VC (o un array) y devuelve un array 1D."""
+    es_array = (isinstance(conversion, (np.ndarray, list, tuple))
+                or hasattr(conversion, "detach"))
+    if es_array or not hasattr(conversion, "__iter__"):
+        audio = conversion
+    else:
+        resultado = None
+        iterador = iter(conversion)
+        while True:
+            try:
+                item = next(iterador)
+            except StopIteration as final:
+                if final.value is not None:
+                    resultado = final.value
+                break
+            if isinstance(item, tuple) and len(item) == 2 and item[1] is not None:
+                resultado = item[1]
+        audio = resultado
+    if audio is None:
+        raise RuntimeError("Seed-VC no devolvió audio.")
+    if hasattr(audio, "detach"):
+        audio = audio.detach().cpu().numpy()
+    if isinstance(audio, tuple):  # (sr, audio)
+        audio = audio[-1]
+    audio = np.asarray(audio, dtype=np.float32)
+    if audio.ndim == 2:
+        audio = audio.mean(axis=0 if audio.shape[0] <= 2 else 1)
+    audio = audio.reshape(-1)
+    if audio.size == 0:
+        raise RuntimeError("Seed-VC devolvió audio vacío.")
+    return audio
 
 
 def convertir(fuente: str | Path, referencia: str | Path,
@@ -97,17 +185,24 @@ def convertir(fuente: str | Path, referencia: str | Path,
       12 = una octava mas aguda.
     - Devuelve audio mono float32 a 44.1 kHz.
     """
+    fuente = Path(fuente).expanduser()
+    referencia = Path(referencia).expanduser()
+    if not fuente.exists():
+        raise FileNotFoundError(f"No existe la voz de la canción: {fuente}")
+    if not referencia.exists():
+        raise FileNotFoundError(f"No existe tu voz de referencia: {referencia}")
+    semitonos = int(semitonos)
+    if not -24 <= semitonos <= 24:
+        raise ValueError("semitonos debe estar entre -24 y 24.")
+    pasos = int(pasos) if pasos is not None else pasos_por_defecto()
+    if pasos < 1:
+        raise ValueError("pasos debe ser al menos 1.")
     motor = cargar_motor()
-    pasos = pasos if pasos is not None else pasos_por_defecto()
     conversion = motor.convert_voice(
         str(fuente), str(referencia), diffusion_steps=pasos,
         f0_condition=True, auto_f0_adjust=False,
         pitch_shift=semitonos, stream_output=False)
-    try:
-        while True:
-            next(conversion)
-    except StopIteration as final:
-        audio = np.asarray(final.value, dtype=np.float32)
+    audio = _extraer_audio(conversion)
     if guardar is not None:
         guardar = Path(guardar)
         guardar.parent.mkdir(parents=True, exist_ok=True)
@@ -115,18 +210,29 @@ def convertir(fuente: str | Path, referencia: str | Path,
     return audio
 
 
+def _mediana_tono(audio: np.ndarray, sr: int) -> float:
+    valores = np.asarray(melodia(audio, sr), dtype=np.float32)
+    valores = valores[np.isfinite(valores) & (valores > 0)]
+    if valores.size == 0:
+        raise ValueError("No se detectó tono en el audio (¿silencio o ruido?).")
+    return float(np.median(valores))
+
+
 def melodia(audio: np.ndarray, sr: int) -> np.ndarray:
     """Altura de la voz en Hz cada centesima de segundo (NaN = silencio)."""
+    sr = int(sr)
+    if sr <= 0:
+        raise ValueError("La frecuencia de muestreo debe ser positiva.")
+    audio = np.nan_to_num(np.asarray(audio, dtype=np.float32).ravel(),
+                          nan=0.0, posinf=0.0, neginf=0.0)
+    if audio.size == 0:
+        return np.zeros(0, dtype=np.float32)
     motor = cargar_motor()
-    try:
-        import librosa
-
-        audio_16k = librosa.resample(np.asarray(audio, dtype=np.float32),
-                                     orig_sr=sr, target_sr=16_000)
-    except ImportError:
-        audio_16k = np.asarray(audio, dtype=np.float32)
+    if not hasattr(motor, "rmvpe"):
+        raise RuntimeError("El motor de Seed-VC no expone el detector de tono (rmvpe).")
+    audio_16k = remuestrear(audio, sr, 16_000)
     tono = np.asarray(motor.rmvpe.infer_from_audio(audio_16k, thred=0.03),
-                      dtype=np.float32)
+                      dtype=np.float32).reshape(-1)
     tono[tono < 1] = np.nan
     return tono
 
@@ -134,14 +240,22 @@ def melodia(audio: np.ndarray, sr: int) -> np.ndarray:
 def diferencia_registro(voz_cancion: np.ndarray, mi_voz: np.ndarray,
                         sr_cancion: int = FS, sr_mia: int | None = None) -> float:
     """Diferencia en semitonos entre la cancion y tu voz hablada."""
-    sr_mia = sr_mia or sr_cancion
-    med_cancion = float(np.nanmedian(melodia(voz_cancion, sr_cancion)))
-    med_mia = float(np.nanmedian(melodia(mi_voz, sr_mia)))
-    return 12 * np.log2(med_cancion / med_mia)
+    sr_mia = int(sr_mia or sr_cancion)
+    med_cancion = _mediana_tono(voz_cancion, sr_cancion)
+    med_mia = _mediana_tono(mi_voz, sr_mia)
+    if med_cancion <= 0 or med_mia <= 0:
+        raise ValueError("No se pudo medir el registro de una de las voces.")
+    return float(12 * math.log2(med_cancion / med_mia))
 
 
 def transposicion_recomendada(diferencia: float) -> int:
     """Regla de la guia: si la cancion queda >8 semitonos arriba, bajar octava."""
+    try:
+        diferencia = float(diferencia)
+    except (TypeError, ValueError):
+        return 0
+    if not math.isfinite(diferencia):
+        return 0
     if diferencia > 8:
         return -12
     if diferencia < -8:

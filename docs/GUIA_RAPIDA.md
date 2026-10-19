@@ -10,6 +10,8 @@
 
 - Lee el texto de ejemplo en voz natural, 10-20 segundos, sin eco.
 - La app revisa 3 cosas: duracion >= 8 s, volumen audible, sin saturacion.
+- Al guardar se normaliza el pico para que el modelo reciba un nivel estable.
+- Formatos aceptados: WAV, MP3 y M4A (estos dos ultimos requieren `librosa`).
 - Queda en `data/referencias/mi_voz.wav` y se reutiliza en los pasos 3 y 4.
 
 ## 3. Clonar voz hablada
@@ -24,11 +26,13 @@
 1. Sube la cancion base (con voz + acompanamiento).
 2. Demucs la parte en `voz` e `instrumental` (revisa con auriculares:
    restos de eco ensucian la conversion).
-3. Seed-VC convierte la voz a tu timbre. Regla de tono:
+3. Elige el fragmento a convertir. En CPU usa 30 s; "Cancion completa" puede
+   tardar muchos minutos.
+4. Seed-VC convierte la voz a tu timbre. Regla de tono:
    - Diferencia <= 8 semitonos: dejar en 0.
    - Cancion mucho mas aguda que tu voz: transponer `-12` (una octava abajo,
      sigue encajando con el instrumental).
-4. Compara original vs convertida antes de mezclar.
+5. Compara original vs convertida antes de mezclar.
 
 ## 5. Mezcla final
 
@@ -44,3 +48,12 @@
 | Falsete forzado | Melodia fuera de tu registro | Transponer -12 o +12 |
 | No se parece a ti | Referencia corta o con ruido | Regrabar con mas entonacion |
 | Error 403 YouTube | Bloqueo temporal | `pip install -U yt-dlp`, otra red, o archivo local |
+| Seed-VC marcado en gris | Faltan paquetes de canto | Ejecuta la app en el entorno de `requirements-canto.txt` |
+| `No module named 'munch'` | Entorno de canto incompleto | `pip install -r requirements-canto.txt` |
+| La app dice que falta ffmpeg | Instalado tras abrir la app | Reinicia `streamlit run app.py` |
+
+Comprueba que tienes de un vistazo con:
+
+```bash
+python scripts/bot.py estado
+```

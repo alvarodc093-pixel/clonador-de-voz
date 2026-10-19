@@ -1,10 +1,12 @@
 import numpy as np
+import pytest
 
 from src import config as cfg
 from src.clone_tts import partir_en_frases
 from src.mix import mezclar
 from src.sing_convert import transposicion_recomendada
-from src.utils import normalizar_pico, remuestrear, revisar_grabacion
+from src.utils import (fundido_cruzado_simple, normalizar_pico, remuestrear,
+                       revisar_grabacion)
 
 
 def test_revision_ok():
@@ -54,3 +56,55 @@ def test_config_env_por_defecto():
     assert cfg.FS_VOZ == 16000
     assert cfg.FS_MUSICA == 44100
     assert isinstance(cfg.VIDEOS, list)
+
+
+def test_revision_archivo_vacio_no_falla():
+    r = revisar_grabacion(np.zeros(0, dtype="float32"), 16000)
+    assert r["duracion"] == 0.0
+    assert not r["ok"]
+
+
+def test_revision_con_sr_invalido():
+    r = revisar_grabacion(np.zeros(1000, dtype="float32"), 0)
+    assert r["duracion"] == 0.0
+
+
+def test_revision_saturada_no_ok():
+    audio = np.ones(16000 * 10, dtype="float32")
+    assert not revisar_grabacion(audio, 16000)["ok"]
+
+
+def test_normalizar_pico_vacio():
+    out = normalizar_pico(np.zeros(0, dtype="float32"))
+    assert out.size == 0
+
+
+def test_normalizar_pico_silencio():
+    audio = np.zeros(100, dtype="float32")
+    assert np.array_equal(normalizar_pico(audio), audio)
+
+
+def test_normalizar_pico_quita_nan():
+    out = normalizar_pico(np.array([np.nan, 0.5, -0.5], dtype="float32"))
+    assert np.isfinite(out).all()
+
+
+def test_remuestrear_vacio():
+    assert remuestrear(np.zeros(0, dtype="float32"), 16000, 44100).size == 0
+
+
+def test_remuestrear_sr_invalido():
+    with pytest.raises(ValueError):
+        remuestrear(np.zeros(10, dtype="float32"), 0, 44100)
+
+
+def test_fundido_no_sobreescribe_muestras():
+    audio = np.ones(20, dtype="float32")
+    out = fundido_cruzado_simple(audio, sr=1000, ms=1000)  # pide 1000 muestras
+    assert out.shape == audio.shape
+    assert out[0] <= out[len(out) // 2]  # fade-in al inicio
+    assert out[-1] <= out[len(out) // 2]  # fade-out al final
+
+
+def test_fundido_audio_corto_no_falla():
+    assert fundido_cruzado_simple(np.ones(1, dtype="float32"), 16000).shape == (1,)

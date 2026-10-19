@@ -28,9 +28,12 @@ def guardar_wav(ruta: str | Path, audio: np.ndarray, sr: int) -> Path:
 def revisar_grabacion(audio: np.ndarray, sr: int) -> dict:
     """Las 3 comprobaciones de la guía Chatterbox: duración, volumen y pico.
 
-    Devuelve dict con valores + booleano ok + consejos.
+    Devuelve dict con valores + booleano ok + consejos. Una grabación de
+    8 s ya es utilizable; 10-20 s es el rango recomendado.
     """
-    audio = np.asarray(audio, dtype=np.float32).ravel()
+    audio = np.nan_to_num(np.asarray(audio, dtype=np.float32).ravel(),
+                          nan=0.0, posinf=0.0, neginf=0.0)
+    sr = int(sr) if sr and sr > 0 else 0
     duracion = len(audio) / sr if sr else 0.0
     pico = float(np.abs(audio).max()) if len(audio) else 0.0
     volumen = float(np.sqrt((audio ** 2).mean())) if len(audio) else 0.0
@@ -52,23 +55,29 @@ def remuestrear(audio: np.ndarray, sr_origen: int, sr_destino: int) -> np.ndarra
     Evita mezclar pistas a distinta frecuencia (p. ej. voz Chatterbox a
     24 kHz sobre base a 44.1 kHz), que sonaría con otro tono y tempo.
     """
-    if sr_origen == sr_destino:
-        return np.asarray(audio, dtype=np.float32)
     audio = np.asarray(audio, dtype=np.float32)
+    sr_origen, sr_destino = int(sr_origen), int(sr_destino)
+    if sr_origen <= 0 or sr_destino <= 0:
+        raise ValueError("Las frecuencias de muestreo deben ser positivas.")
+    if sr_origen == sr_destino or audio.size == 0:
+        return audio
     try:
         import librosa
 
         return librosa.resample(audio, orig_sr=sr_origen,
                                 target_sr=sr_destino).astype(np.float32)
     except ImportError:
-        n_nuevo = int(round(len(audio) * sr_destino / sr_origen))
+        n_nuevo = max(1, int(round(len(audio) * sr_destino / sr_origen)))
         x_viejo = np.linspace(0, 1, len(audio))
         x_nuevo = np.linspace(0, 1, n_nuevo)
         return np.interp(x_nuevo, x_viejo, audio).astype(np.float32)
 
 
 def normalizar_pico(audio: np.ndarray, pico_objetivo: float = 0.89) -> np.ndarray:
-    audio = np.asarray(audio, dtype=np.float32)
+    audio = np.nan_to_num(np.asarray(audio, dtype=np.float32),
+                          nan=0.0, posinf=0.0, neginf=0.0)
+    if audio.size == 0:
+        return audio
     pico = float(np.abs(audio).max())
     if pico < 1e-9:
         return audio
@@ -77,11 +86,14 @@ def normalizar_pico(audio: np.ndarray, pico_objetivo: float = 0.89) -> np.ndarra
 
 def fundido_cruzado_simple(audio: np.ndarray, sr: int, ms: int = 10) -> np.ndarray:
     """Pequeño fade-in/out para evitar clics al unir frases o mezclar."""
-    n = min(len(audio), int(sr * ms / 1000))
+    audio = np.asarray(audio, dtype=np.float32)
+    if audio.size == 0 or int(sr) <= 0 or ms <= 0:
+        return audio.copy()
+    n = min(audio.shape[-1] // 2, int(sr * ms / 1000))
     if n <= 0:
-        return audio
+        return audio.copy()
     rampa = np.linspace(0, 1, n, dtype=np.float32)
-    audio = audio.astype(np.float32).copy()
-    audio[:n] *= rampa
-    audio[-n:] *= rampa[::-1]
+    audio = audio.copy()
+    audio[..., :n] *= rampa
+    audio[..., -n:] *= rampa[::-1]
     return audio

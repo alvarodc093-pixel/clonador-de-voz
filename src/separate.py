@@ -35,15 +35,25 @@ def separar(cancion_wav: str | Path, salida: str | Path,
             "Demucs no está instalado. Activa el entorno de canto e instala: "
             "pip install -r requirements-canto.txt (Python 3.10)."
         )
-    cancion_wav = Path(cancion_wav)
+    cancion_wav = Path(cancion_wav).expanduser()
+    if not cancion_wav.exists():
+        raise FileNotFoundError(f"No existe el audio a separar: {cancion_wav}")
+    if cancion_wav.suffix.lower() != ".wav":
+        raise ValueError("Demucs necesita un WAV (usa cargar_cancion_estereo para mp3).")
+    if not str(modelo).strip():
+        raise ValueError("El nombre del modelo de Demucs no puede estar vacío.")
     salida = Path(salida)
     salida.mkdir(parents=True, exist_ok=True)
-    proceso = subprocess.run(
-        [sys.executable, "-m", "demucs", "--two-stems", "vocals",
-         "-n", modelo, "-o", str(salida), str(cancion_wav)],
-        capture_output=True, text=True)
+    try:
+        proceso = subprocess.run(
+            [sys.executable, "-m", "demucs", "--two-stems", "vocals",
+             "-n", modelo, "-o", str(salida), str(cancion_wav)],
+            capture_output=True, text=True)
+    except OSError as e:
+        raise RuntimeError(f"No se pudo ejecutar Demucs: {e}") from e
     if proceso.returncode != 0:
-        raise RuntimeError(f"Demucs falló:\n{proceso.stderr[-2000:]}")
+        detalle = (proceso.stderr or "").strip()[-2000:] or "sin detalle"
+        raise RuntimeError(f"Demucs falló:\n{detalle}")
     pistas = salida / modelo / cancion_wav.stem
     voz = pistas / "vocals.wav"
     inst = pistas / "no_vocals.wav"
@@ -62,19 +72,38 @@ def _a_mono(audio: np.ndarray) -> np.ndarray:
     return audio.ravel().astype(np.float32)
 
 
+def _a_estereo(audio: np.ndarray) -> np.ndarray:
+    audio = np.asarray(audio, dtype=np.float32)
+    if audio.ndim == 1:
+        audio = np.stack([audio, audio])
+    elif audio.shape[0] == 1:
+        audio = np.repeat(audio, 2, axis=0)
+    elif audio.shape[0] > 2:
+        audio = audio[:2]
+    return audio
+
+
 def cargar_pistas(rutas: dict[str, Path], sr: int = 44_100):
     """Carga voz (mono) e instrumental (estéreo). Devuelve (voz, inst, sr)."""
+    faltan = [k for k in ("voz", "instrumental") if k not in rutas]
+    if faltan:
+        raise KeyError(f"Faltan pistas en el diccionario: {faltan}")
+    for k in ("voz", "instrumental"):
+        if not Path(rutas[k]).exists():
+            raise FileNotFoundError(f"No existe la pista {k}: {rutas[k]}")
     try:
         import librosa
 
         voz, _ = librosa.load(str(rutas["voz"]), sr=sr, mono=True)
         inst, _ = librosa.load(str(rutas["instrumental"]), sr=sr, mono=False)
-        inst = np.asarray(inst, dtype=np.float32)
-        if inst.ndim == 1:
-            inst = np.stack([inst, inst])
-        return np.asarray(voz, dtype=np.float32), inst, sr
+        return (np.asarray(voz, dtype=np.float32),
+                _a_estereo(np.asarray(inst, dtype=np.float32)), int(sr))
     except ImportError:
         voz, sr_voz = sf.read(str(rutas["voz"]), dtype="float32", always_2d=False)
-        inst, sr_inst = sf.read(str(rutas["instrumental"]), dtype="float32", always_2d=True)
-        assert sr_voz == sr_inst, "Las pistas separadas no coinciden en frecuencia"
-        return (_a_mono(voz), np.asarray(inst.T, dtype=np.float32), int(sr_voz))
+        inst, sr_inst = sf.read(str(rutas["instrumental"]), dtype="float32",
+                                always_2d=True)
+        if int(sr_voz) != int(sr_inst):
+            raise RuntimeError(
+                f"Las pistas separadas no coinciden en frecuencia "
+                f"({sr_voz} Hz vs {sr_inst} Hz).")
+        return (_a_mono(voz), _a_estereo(inst.T), int(sr_voz))
