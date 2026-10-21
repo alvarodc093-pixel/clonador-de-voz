@@ -19,6 +19,10 @@ Bot Python + app Streamlit, con modelos de codigo abierto.
 Los pasos 1, 2 y 5 funcionan sin GPU ni modelos. Los pasos 3 y 4
 descargan modelos la primera vez que se usan.
 
+## Vista previa
+
+![Interfaz de la app: panel de estado con todos los modelos disponibles y los cinco pasos del flujo](assets/app.png)
+
 ## Configuracion (.env)
 
 El personaje y los videos se cambian en un solo lugar: el archivo `.env`
