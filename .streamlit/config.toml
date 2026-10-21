@@ -1,9 +1,43 @@
 [theme]
-primaryColor = "#7C3AED"
-backgroundColor = "#0E1117"
-secondaryBackgroundColor = "#1C1F26"
-textColor = "#FAFAFA"
-font = "sans serif"
+base = "dark"
+primaryColor = "#1DB954"
+backgroundColor = "#121212"
+secondaryBackgroundColor = "#181818"
+codeBackgroundColor = "#181818"
+textColor = "#FFFFFF"
+linkColor = "#1ED760"
+codeTextColor = "#EAEAEA"
+borderColor = "#2A2A2A"
+showWidgetBorder = false
+showSidebarBorder = true
+baseRadius = "8px"
+buttonRadius = "full"
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+codeFont = "'JetBrains Mono':https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap"
+codeFontSize = "0.85rem"
+baseFontSize = 15
+baseFontWeight = 400
+headingFontSizes = ["34px", "26px", "21px", "17px", "14px", "12px"]
+headingFontWeights = [700, 600, 600, 600, 500, 500]
+linkUnderline = false
+chartCategoricalColors = ["#1ED760", "#1DB954", "#B3B3B3", "#535353", "#E8A33D", "#8D67AB", "#4687D6"]
+
+# Paleta Spotify para badges y texto de color
+greenColor = "#1ED760"
+grayColor = "#B3B3B3"
+yellowColor = "#FBBF24"
+orangeColor = "#FB923C"
+redColor = "#F87171"
+blueColor = "#4687D6"
+violetColor = "#8D67AB"
+
+[theme.sidebar]
+backgroundColor = "#000000"
+secondaryBackgroundColor = "#0A0A0A"
+codeBackgroundColor = "#0A0A0A"
+borderColor = "#1F1F1F"
+textColor = "#FFFFFF"
+primaryColor = "#1DB954"
 
 [server]
 headless = true

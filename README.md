@@ -1,5 +1,10 @@
 # Clonador de voz
 
+[![Python 3.11](https://img.shields.io/badge/python-3.11-blue?logo=python&logoColor=white)](https://www.python.org/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-app-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
+[![Tests](https://img.shields.io/badge/tests-79%20pasando-brightgreen)](#pruebas)
+[![Licencia MIT](https://img.shields.io/badge/licencia-MIT-green)](LICENSE)
+
 Extrae el audio de un video, clona tu voz y ponla sobre una base musical.
 Bot Python + app Streamlit, con modelos de codigo abierto.
 
@@ -133,3 +138,8 @@ modelos reales.
 Clona solo tu voz o la de quien te haya dado permiso, usa canciones
 libres o tuyas, y avisa siempre de que el audio es generado.
 Chatterbox anade marca de agua detectable; Seed-VC no anade ninguna.
+
+## Licencia
+
+Distribuido bajo la [Licencia MIT](LICENSE). Los modelos usados
+(Chatterbox, Seed-VC, Demucs) tienen sus propias licencias en sus repositorios.

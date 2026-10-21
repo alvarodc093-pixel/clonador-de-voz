@@ -29,7 +29,7 @@ st.session_state.setdefault("voz_clonada", None)
 st.session_state.setdefault("voz_convertida", None)
 st.session_state.setdefault("instrumental", None)
 
-st.title("Clonador de voz")
+st.title("Clonador de voz", icon=":material/mic:")
 st.markdown(
     "Extrae el audio de un video, registra tu voz y ponla sobre una "
     "base musical. Clona **solo tu voz o la de quien te haya dado permiso**, "
@@ -82,10 +82,13 @@ def estado_herramientas() -> dict[str, bool]:
 
 
 with st.sidebar:
-    st.subheader("Estado del sistema")
+    st.subheader("Estado del sistema", icon=":material/hub:")
     for nombre, ok in estado_herramientas().items():
-        st.markdown(f"{'✅' if ok else '⬜'} {nombre}")
-    st.caption("⬜ = opcional. Sin el modelo, ese paso muestra como instalarlo.")
+        if ok:
+            st.badge(nombre, icon=":material/check_circle:", color="green")
+        else:
+            st.badge(nombre, icon=":material/remove:", color="gray")
+    st.caption("Gris = opcional. Sin el modelo, ese paso muestra como instalarlo.")
     st.divider()
     st.markdown(f"**Personaje:** {cfg.PERSONAJE}")
     if cfg.DESCRIPCION:
@@ -93,12 +96,13 @@ with st.sidebar:
     if cfg.VIDEOS:
         st.caption(f"{len(cfg.VIDEOS)} video(s) en el `.env`.")
     st.markdown("Material original en `Archivos/` (cuadernos de la guía).")
-    import sys as _sys
-    st.caption(f"`{ _sys.executable }`")
 
 tab_extraer, tab_voz, tab_clonar, tab_cantar, tab_mezclar = st.tabs(
-    ["1. Extraer audio", "2. Mi voz", "3. Clonar voz",
-     "4. Poner voz a cantar", "5. Mezcla final"])
+    ["1. :material/download_for_offline: Extraer audio",
+     "2. :material/mic: Mi voz",
+     "3. :material/person: Clonar voz",
+     "4. :material/music_note: Cantar",
+     "5. :material/graphic_eq: Mezcla final"])
 
 
 # ---- 1. Extraer -------------------------------------------------------------

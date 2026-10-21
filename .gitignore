@@ -4,6 +4,9 @@ __pycache__/
 .venv*/
 .env
 
+# IDE (configuración local, con rutas personales)
+.vscode/
+
 # Herramientas de calidad
 .pytest_cache/
 .ruff_cache/
@@ -16,12 +19,14 @@ data/referencias/*
 data/separaciones/*
 data/clonados/*
 data/mezclas/*
+data/videos.json
 !data/**/.gitkeep
 checkpoints/
 seed-vc/
 *.wav
 *.mp3
 *.mp4
+*.m4a
 
 # Streamlit secrets
 .streamlit/secrets.toml
