@@ -1,0 +1,19 @@
+# Dependencias del Space (Docker) — combinación verificada localmente
+# en Python 3.11 con CPU. torch/torchaudio se instalan aparte (índice CPU).
+streamlit==1.65.0
+transformers==5.2.0
+huggingface_hub==1.33.0
+numpy==1.26.4
+scipy==1.17.1
+librosa==0.11.0
+soundfile==0.14.0
+yt-dlp
+python-dotenv==1.2.4
+demucs==4.1.0
+chatterbox-tts==0.1.7
+munch==4.0.0
+einops==0.8.2
+descript-audio-codec==1.0.0
+pydub==0.25.1
+PyYAML==6.0.3
+pyloudnorm==0.2.0

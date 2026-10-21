@@ -1,9 +1,25 @@
+---
+title: Clonador de voz
+emoji: 🎙️
+colorFrom: green
+colorTo: black
+sdk: docker
+app_port: 7860
+pinned: false
+tags:
+  - audio
+  - voice-conversion
+  - tts
+  - streamlit
+---
+
 # Clonador de voz
 
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-app-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
 [![Tests](https://img.shields.io/badge/tests-79%20pasando-brightgreen)](#pruebas)
 [![Licencia MIT](https://img.shields.io/badge/licencia-MIT-green)](LICENSE)
+[![HF Space](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Space-yellow)](https://huggingface.co/spaces/Alvarodc1993/clonador-de-voz)
 
 Extrae el audio de un video, clona tu voz y ponla sobre una base musical.
 Bot Python + app Streamlit, con modelos de codigo abierto.
@@ -41,6 +57,19 @@ python scripts/bot.py extraer   # procesa todos los VIDEOS del .env
 
 Variables reconocidas: `PERSONAJE`, `DESCRIPCION`, `VIDEOS`, `ALTURA_MAX`,
 `FS_VOZ` (16000) y `FS_MUSICA` (44100).
+
+## Demo en linea
+
+La app corre en [Hugging Face Spaces](https://huggingface.co/spaces/Alvarodc1993/clonador-de-voz)
+(con imagen Docker propia: modelos pre-descargados, CPU). Si el Space esta
+suspendido por inactividad, se despierte solo al abrirlo (1-3 min de espera).
+
+Notas del Space:
+
+- El paso 1 acepta **subir** archivos sin problemas; la descarga directa de
+  YouTube puede fallar porque los servidores de HF estan bloqueados a veces
+  por YouTube (usala local en ese caso).
+- En CPU la conversion cantada tarda varios minutos por fragmento corto.
 
 ## Instalacion
 
