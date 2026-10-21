@@ -1,25 +1,10 @@
----
-title: Clonador de voz
-emoji: 🎙️
-colorFrom: green
-colorTo: black
-sdk: docker
-app_port: 7860
-pinned: false
-tags:
-  - audio
-  - voice-conversion
-  - tts
-  - streamlit
----
-
 # Clonador de voz
 
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-app-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
 [![Tests](https://img.shields.io/badge/tests-79%20pasando-brightgreen)](#pruebas)
 [![Licencia MIT](https://img.shields.io/badge/licencia-MIT-green)](LICENSE)
-[![HF Space](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Space-yellow)](https://huggingface.co/spaces/Alvarodc1993/clonador-de-voz)
+[![Demo](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://alvarodc093-pixel-clonador-de-voz.streamlit.app)
 
 Extrae el audio de un video, clona tu voz y ponla sobre una base musical.
 Bot Python + app Streamlit, con modelos de codigo abierto.
@@ -60,16 +45,18 @@ Variables reconocidas: `PERSONAJE`, `DESCRIPCION`, `VIDEOS`, `ALTURA_MAX`,
 
 ## Demo en linea
 
-La app corre en [Hugging Face Spaces](https://huggingface.co/spaces/Alvarodc1993/clonador-de-voz)
-(con imagen Docker propia: modelos pre-descargados, CPU). Si el Space esta
-suspendido por inactividad, se despierte solo al abrirlo (1-3 min de espera).
+La app corre en [Streamlit Community Cloud](https://alvarodc093-pixel-clonador-de-voz.streamlit.app)
+(gratuita, siempre disponible). En la demo funcionan los pasos 1 (extraer),
+2 (registrar voz) y 5 (mezclar); los pasos 3 y 4 necesitan los modelos de voz
+que solo estan en la ejecucion local (la demo los marca como no disponibles).
 
-Notas del Space:
+Notas de la demo:
 
 - El paso 1 acepta **subir** archivos sin problemas; la descarga directa de
-  YouTube puede fallar porque los servidores de HF estan bloqueados a veces
-  por YouTube (usala local en ese caso).
-- En CPU la conversion cantada tarda varios minutos por fragmento corto.
+  YouTube puede fallar porque los servidores de la nube suelen estar
+  bloqueados por YouTube (usala local en ese caso).
+- El `Dockerfile` del repo deja la app lista para desplegarse completa en
+  Hugging Face Spaces (CPU 16 GB) cuando se quiera pagar ese hosting.
 
 ## Instalacion
 
