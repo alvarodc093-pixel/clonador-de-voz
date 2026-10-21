@@ -100,3 +100,64 @@ def test_dependencias_seedvc_devuelve_lista():
     faltan = sc.dependencias_seedvc()
     assert isinstance(faltan, list)
     assert all(isinstance(x, str) for x in faltan)
+
+
+def test_parchear_bigvgan_sin_modulos_no_lanza():
+    # sin seed-vc en sys.path el parche debe ser un no-op silencioso
+    sc._parchear_bigvgan_hub()
+
+
+def test_parchear_bigvgan_compatibiliza_hub_nuevo(monkeypatch):
+    import inspect
+    import sys
+    import types
+
+    from huggingface_hub import hf_hub_download
+
+    params = set(inspect.signature(hf_hub_download).parameters)
+    if {"proxies", "resume_download"} <= params:
+        pytest.skip("huggingface_hub antiguo: el parche no hace falta")
+
+    llamadas = {}
+
+    def fake_fhd(repo_id, filename, **kwargs):
+        # misma forma que hub 1.x: sin proxies ni resume_download
+        llamadas["fhd_kwargs"] = {"repo_id": repo_id, "filename": filename,
+                                  **kwargs}
+        return "modelo.bin"
+
+    class FakeBigVGAN:
+        @classmethod
+        def _from_pretrained(cls, *, model_id, proxies, resume_download, **kwargs):
+            # como en seed-vc: proxies/resume_download son obligatorios
+            # sin defaults, y el hub 1.x no los envia.
+            llamadas["proxies"] = proxies
+            llamadas["resume_download"] = resume_download
+            mod = sys.modules["modules.bigvgan.bigvgan"]
+            llamadas["fhd"] = mod.hf_hub_download(
+                repo_id=model_id, filename="generator.pth",
+                proxies=proxies, resume_download=resume_download)
+            return "cargado"
+
+    bg = types.ModuleType("modules.bigvgan.bigvgan")
+    bg.hf_hub_download = fake_fhd
+    bg.BigVGAN = FakeBigVGAN
+    for nombre, mod in {
+        "modules": types.ModuleType("modules"),
+        "modules.bigvgan": types.ModuleType("modules.bigvgan"),
+        "modules.bigvgan.bigvgan": bg,
+    }.items():
+        monkeypatch.setitem(sys.modules, nombre, mod)
+    monkeypatch.setattr("huggingface_hub.hf_hub_download", fake_fhd)
+
+    sc._parchear_bigvgan_hub()
+
+    # _from_pretrained ya no exige proxies/resume_download (tiene defaults)
+    assert FakeBigVGAN._from_pretrained(model_id="x") == "cargado"
+    assert llamadas["proxies"] is None
+    assert llamadas["resume_download"] is False
+    # y el wrapper de hf_hub_download filtra los kwargs obsoletos
+    assert "proxies" not in llamadas["fhd_kwargs"]
+    assert "resume_download" not in llamadas["fhd_kwargs"]
+    assert llamadas["fhd_kwargs"]["repo_id"] == "x"
+    assert llamadas["fhd_kwargs"]["filename"] == "generator.pth"

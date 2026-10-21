@@ -91,6 +91,47 @@ def pasos_por_defecto() -> int:
     return 10 if dispositivo() == "cpu" else 30
 
 
+def _parchear_bigvgan_hub() -> None:
+    """Compatibiliza el BigVGAN de seed-vc con huggingface_hub >= 1.0.
+
+    En hub 1.x, ``PyTorchModelHubMixin.from_pretrained`` ya no pasa
+    ``proxies``/``resume_download`` a ``_from_pretrained`` y
+    ``hf_hub_download`` tampoco los acepta; el wrapper de seed-vc los
+    declara obligatorios y la carga del vocoder muere con TypeError.
+    """
+    import inspect
+
+    try:
+        from huggingface_hub import hf_hub_download as _fhd
+        from modules.bigvgan import bigvgan as bg
+    except Exception:
+        return
+
+    params = set(inspect.signature(_fhd).parameters)
+    if {"proxies", "resume_download"} <= params:
+        return  # hub antiguo: compatible sin parche
+
+    def _fhd_compat(*args, **kwargs):
+        kwargs = {k: v for k, v in kwargs.items() if k in params}
+        return _fhd(*args, **kwargs)
+
+    bg.hf_hub_download = _fhd_compat
+
+    original = bg.BigVGAN._from_pretrained.__func__
+
+    def _from_pretrained(cls, *, model_id, revision=None, cache_dir=None,
+                         force_download=False, local_files_only=False,
+                         token=None, proxies=None, resume_download=False,
+                         **kwargs):
+        return original(cls, model_id=model_id, revision=revision,
+                        cache_dir=cache_dir, force_download=force_download,
+                        proxies=proxies, resume_download=resume_download,
+                        local_files_only=local_files_only, token=token,
+                        **kwargs)
+
+    bg.BigVGAN._from_pretrained = classmethod(_from_pretrained)
+
+
 def cargar_motor(device: str | None = None):
     """Carga SeedVCWrapper una sola vez. Error claro si falta la carpeta."""
     global _motor
@@ -117,6 +158,7 @@ def cargar_motor(device: str | None = None):
                 "No se encontro la carpeta seed-vc junto al proyecto. "
                 "Clonala con: git clone https://github.com/Plachtaa/seed-vc.git"
             )
+        _parchear_bigvgan_hub()
         try:
             from seed_vc_wrapper import SeedVCWrapper
         except Exception as e:
