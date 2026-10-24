@@ -1,1 +1,1 @@
-﻿"""Clonador de voz - paquete de logica (bot)."""
+"""Clonador de voz - paquete de logica (bot)."""

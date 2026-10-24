@@ -1,3 +1,4 @@
+import importlib.util
 import numpy as np
 import pytest
 import soundfile as sf
@@ -9,6 +10,12 @@ def _ref(tmp_path):
     ruta = tmp_path / "ref.wav"
     sf.write(str(ruta), np.zeros(16000, dtype="float32"), 16000)
     return ruta
+
+
+# El modelo simulado devuelve tensores de torch: sin torch instalado estos tests se saltan.
+necesita_torch = pytest.mark.skipif(
+    importlib.util.find_spec("torch") is None, reason="requiere torch (requirements-voz.txt)"
+)
 
 
 class FakeModel:
@@ -65,6 +72,7 @@ def test_idiomas_soportados_completos():
     assert set(clone_tts.IDIOMAS_SOPORTADOS) == set(clone_tts.IDIOMAS)
 
 
+@necesita_torch
 def test_hablar_genera_y_guarda(tmp_path, monkeypatch):
     monkeypatch.setattr(clone_tts, "cargar_modelo", lambda device=None: FakeModel())
     destino = tmp_path / "out.wav"
@@ -75,6 +83,7 @@ def test_hablar_genera_y_guarda(tmp_path, monkeypatch):
     assert destino.exists()
 
 
+@necesita_torch
 def test_hablar_reintenta_si_es_demasiado_largo(tmp_path, monkeypatch):
     modelo = FakeModel(duraciones=[24000 * 10, 2400])  # 10 s y luego 0.1 s
     monkeypatch.setattr(clone_tts, "cargar_modelo", lambda device=None: modelo)
@@ -83,6 +92,7 @@ def test_hablar_reintenta_si_es_demasiado_largo(tmp_path, monkeypatch):
     assert audio.size == 2400
 
 
+@necesita_torch
 def test_leer_une_frases(tmp_path, monkeypatch):
     monkeypatch.setattr(clone_tts, "cargar_modelo", lambda device=None: FakeModel())
     audio, sr = clone_tts.leer("Buenos días. ¿Cómo estás?",

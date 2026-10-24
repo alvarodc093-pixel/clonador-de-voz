@@ -112,6 +112,7 @@ def test_parchear_bigvgan_compatibiliza_hub_nuevo(monkeypatch):
     import sys
     import types
 
+    pytest.importorskip("huggingface_hub")  # solo en requirements-canto.txt
     from huggingface_hub import hf_hub_download
 
     params = set(inspect.signature(hf_hub_download).parameters)
